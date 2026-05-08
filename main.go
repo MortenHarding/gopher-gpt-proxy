@@ -267,10 +267,9 @@ func (s *Server) handle(conn net.Conn) {
 
 func (s *Server) serveMenu(conn net.Conn, sessID string) {
 	gopherInfo(conn, "+------------------------------------------------------+")
-	gopherInfo(conn, "|       GopherGPT - LLaMA / Groq over Gopher           |")
+	gopherInfo(conn, "|      GopherGPT - LLaMA / Groq on Gopherspace.dk      |")
 	gopherInfo(conn, "+------------------------------------------------------+")
 	gopherInfo(conn, "")
-	gopherInfo(conn, "Welcome! Chat with an open-weight LLM via Groq.")
 	gopherInfo(conn, "Your conversation is remembered for 30 minutes.")
 	gopherInfo(conn, fmt.Sprintf("Session: %s", sessID))
 	gopherInfo(conn, fmt.Sprintf("Model:   %s", groqModel))

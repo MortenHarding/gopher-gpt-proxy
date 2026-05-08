@@ -140,13 +140,13 @@ port 70 -> 7070.
 Build the image, with your own groq api key
 
 ```bash
-docker build -t gopher-gpt-proxy --build-arg GROQ_API_KEY="gsk_..." .
+docker build -t gopher-gpt-proxy .
 ```
 
 Run the docker container
 
 ```bash
-docker run gopher-gpt-proxy .
+docker run -e GROQ_API_KEY="gsk_..." -p 7070:7070 gopher-gpt-proxy .
 ```
 
 ## Notes
