@@ -140,7 +140,7 @@ port 70 -> 7070.
 Build the image, with your own groq api key
 
 ```bash
-docker build -t gopher-gpt-proxy .
+docker build -t mhardingdk/gopher:gptproxy .
 ```
 
 Run the docker container

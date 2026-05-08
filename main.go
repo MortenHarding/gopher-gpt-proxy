@@ -266,20 +266,19 @@ func (s *Server) handle(conn net.Conn) {
 }
 
 func (s *Server) serveMenu(conn net.Conn, sessID string) {
-	gopherInfo(conn, "+------------------------------------------------------+")
-	gopherInfo(conn, "|      GopherGPT - LLaMA / Groq on Gopherspace.dk      |")
-	gopherInfo(conn, "+------------------------------------------------------+")
+	gopherInfo(conn, " __                    ")
+	gopherInfo(conn, "/ _   _   _  |_   _  _ ")
+	gopherInfo(conn, "\\__) (_) |_) | ) (- | ")
+	gopherInfo(conn, "         |         GPT/Groq")
+	gopherInfo(conn, "_______________________________")
 	gopherInfo(conn, "")
-	gopherInfo(conn, "Your conversation is remembered for 30 minutes.")
-	gopherInfo(conn, fmt.Sprintf("Session: %s", sessID))
-	gopherInfo(conn, fmt.Sprintf("Model:   %s", groqModel))
+	gopherInfo(conn, "Chat with an LLM via Groq.")
 	gopherInfo(conn, "")
-	gopherSearch(conn, "[ Chat ]", "/chat", s.host, s.port)
-	gopherSearch(conn, "[ Start a new session (clears history) ]", "/new", s.host, s.port)
-	fmt.Fprintf(conn, "1[ View conversation history ]\t/history\t%s\t%s\r\n", s.host, s.port)
+	gopherSearch(conn, "Chat", "/chat", s.host, s.port)
+	gopherSearch(conn, "New session/clear history", "/new", s.host, s.port)
+	fmt.Fprintf(conn, "1View history\t/history\t%s\t%s\r\n", s.host, s.port)
 	gopherInfo(conn, "")
-	gopherInfo(conn, "Tip: embed a token in the path to share across a NAT:")
-	gopherInfo(conn, "  /chat/mytoken   /new/mytoken   /history/mytoken")
+	gopherInfo(conn, "History saved for 30 minutes.")
 	gopherEnd(conn)
 }
 
