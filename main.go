@@ -92,10 +92,73 @@ func (s *SessionStore) reap() {
 	}
 }
 
-// ── OVHcloud AI Endpoints client ──────────────────────────────────────────────
-//
-// OVHcloud exposes an OpenAI-compatible /v1/chat/completions endpoint.
-// The anonymous free tier requires no Authorization header at all.
+// ── Access Logger ─────────────────────────────────────────────────────────────
+
+// AccessLogger writes structured tab-separated access log lines to a file.
+type AccessLogger struct {
+	logger *log.Logger
+}
+
+// LogEntry holds all fields for a single access log line.
+type LogEntry struct {
+	Timestamp time.Time
+	IP        string
+	ItemType  string // "menu", "chat", "new", "history", "error"
+	Selector  string
+	ElapsedMS int64
+	Status    string // "ok" or "error: <reason>"
+}
+
+// NewAccessLogger opens (or creates) path for append-only writing.
+// Returns nil, nil if path is empty (logging disabled).
+func NewAccessLogger(path string) (*AccessLogger, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("opening access log %q: %w", path, err)
+	}
+	return &AccessLogger{
+		logger: log.New(f, "", 0),
+	}, nil
+}
+
+// Log writes a single access log entry. Safe to call on a nil receiver
+// (logging disabled).
+func (l *AccessLogger) Log(e LogEntry) {
+	if l == nil {
+		return
+	}
+	l.logger.Printf("%s\t%s\t%-7s\t%s\t%dms\t%s",
+		e.Timestamp.UTC().Format(time.RFC3339),
+		e.IP,
+		e.ItemType,
+		e.Selector,
+		e.ElapsedMS,
+		e.Status,
+	)
+}
+
+// itemType classifies a GopherGPT selector into a human-readable label.
+func itemType(selector string) string {
+	if selector == "" || selector == "/" {
+		return "menu"
+	}
+	parts := strings.Split(strings.TrimPrefix(selector, "/"), "/")
+	if len(parts) == 0 {
+		return "menu"
+	}
+	switch parts[0] {
+	case "chat":
+		return "chat"
+	case "new":
+		return "new"
+	case "history":
+		return "history"
+	default:
+		return "unknown"
+	}
+}
+
+// ── Groq / OpenAI-compatible client ──────────────────────────────────────────
 
 type groqRequest struct {
 	Model    string    `json:"model"`
@@ -211,10 +274,11 @@ func sessionIDFromSelector(selector string) string {
 // ── Request handler ───────────────────────────────────────────────────────────
 
 type Server struct {
-	store  *SessionStore
-	apiKey string
-	host   string
-	port   string
+	store     *SessionStore
+	apiKey    string
+	host      string
+	port      string
+	accessLog *AccessLogger
 }
 
 func (s *Server) handle(conn net.Conn) {
@@ -237,7 +301,10 @@ func (s *Server) handle(conn net.Conn) {
 		selector = line
 	}
 
+	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	log.Printf("[request] selector=%q query=%q from=%s", selector, query, conn.RemoteAddr())
+
+	start := time.Now()
 
 	sessID := sessionIDFromSelector(selector)
 	if sessID == "" {
@@ -250,11 +317,12 @@ func (s *Server) handle(conn net.Conn) {
 		command = parts[0]
 	}
 
+	var routeErr error
 	switch command {
 	case "/", "":
 		s.serveMenu(conn, sessID)
 	case "chat":
-		s.serveChat(conn, sessID, query)
+		routeErr = s.serveChat(conn, sessID, query)
 	case "new":
 		s.serveNew(conn, sessID)
 	case "history":
@@ -263,6 +331,24 @@ func (s *Server) handle(conn net.Conn) {
 		gopherInfo(conn, "Unknown selector. Please start at the root menu.")
 		gopherEnd(conn)
 	}
+
+	elapsed := time.Since(start).Milliseconds()
+
+	// ── access log ──────────────────────────────────────────────────────────
+	entry := LogEntry{
+		Timestamp: time.Now().UTC(),
+		IP:        ip,
+		ItemType:  itemType(selector),
+		Selector:  selector,
+		ElapsedMS: elapsed,
+		Status:    "ok",
+	}
+	if routeErr != nil {
+		entry.Status = "error: " + routeErr.Error()
+		entry.ItemType = "error"
+	}
+	s.accessLog.Log(entry)
+	// ────────────────────────────────────────────────────────────────────────
 }
 
 func (s *Server) serveMenu(conn net.Conn, sessID string) {
@@ -282,12 +368,15 @@ func (s *Server) serveMenu(conn net.Conn, sessID string) {
 	gopherEnd(conn)
 }
 
-func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) {
+// serveChat returns an error only when the Groq API call fails, so the
+// access logger can record it.  All other failure paths write their own
+// Gopher error lines and return nil.
+func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) error {
 	if userMsg == "" {
 		gopherInfo(conn, "Type your message and press Enter.")
 		gopherSearch(conn, "Send message", "/chat", s.host, s.port)
 		gopherEnd(conn)
-		return
+		return nil
 	}
 
 	sess := s.store.GetOrCreate(sessID)
@@ -305,7 +394,7 @@ func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) {
 		sess.History = sess.History[:len(sess.History)-1]
 		gopherInfo(conn, "Error: "+err.Error())
 		gopherEnd(conn)
-		return
+		return err
 	}
 
 	sess.History = append(sess.History, Message{Role: "assistant", Content: reply})
@@ -323,6 +412,7 @@ func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) {
 	gopherSearch(conn, "[ Reply ]", "/chat", s.host, s.port)
 	gopherSearch(conn, "[ Start a new conversation ]", "/new", s.host, s.port)
 	gopherEnd(conn)
+	return nil
 }
 
 func (s *Server) serveNew(conn net.Conn, sessID string) {
@@ -370,6 +460,7 @@ func (s *Server) serveHistory(conn net.Conn, sessID string) {
 func main() {
 	flagHost := flag.String("host", "localhost", "Hostname clients use to reach this server")
 	flagPort := flag.String("port", "7070", "TCP port to listen on (use 70 in production)")
+	flagLog := flag.String("access-log", "access.log", "Path to access log file (empty to disable)")
 	flag.Parse()
 
 	apiKey := os.Getenv("GROQ_API_KEY")
@@ -377,13 +468,24 @@ func main() {
 		log.Fatal("GROQ_API_KEY environment variable is not set — get a free key at https://console.groq.com")
 	}
 
+	var al *AccessLogger
+	if *flagLog != "" {
+		var err error
+		al, err = NewAccessLogger(*flagLog)
+		if err != nil {
+			log.Fatalf("access log error: %v", err)
+		}
+		log.Printf("Access log: %s", *flagLog)
+	}
+
 	listenAddr := ":" + *flagPort
 
 	srv := &Server{
-		store:  NewSessionStore(),
-		apiKey: apiKey,
-		host:   *flagHost,
-		port:   *flagPort,
+		store:     NewSessionStore(),
+		apiKey:    apiKey,
+		host:      *flagHost,
+		port:      *flagPort,
+		accessLog: al,
 	}
 
 	ln, err := net.Listen("tcp", listenAddr)
