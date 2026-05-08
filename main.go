@@ -84,7 +84,7 @@ func (s *SessionStore) reap() {
 		s.mu.Lock()
 		for id, sess := range s.sessions {
 			if time.Since(sess.LastSeen) > sessionTTL {
-				log.Printf("[session] expired: %s", id)
+				log.Printf("session expired: %s", id)
 				delete(s.sessions, id)
 			}
 		}
@@ -196,7 +196,7 @@ func callGroq(apiKey string, history []Message) (string, error) {
 	defer resp.Body.Close()
 
 	raw, _ := io.ReadAll(resp.Body)
-	log.Printf("[groq] HTTP %d body: %s", resp.StatusCode, string(raw))
+	log.Printf("groq HTTP %d body: %s", resp.StatusCode, string(raw))
 
 	if resp.StatusCode == 429 {
 		return "", fmt.Errorf("rate limit exceeded — wait a moment and try again")
@@ -288,7 +288,7 @@ func (s *Server) handle(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
-		log.Printf("[error] read: %v", err)
+		log.Printf("error read: %v", err)
 		return
 	}
 	line = strings.TrimRight(line, "\r\n")
@@ -302,7 +302,7 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
-	log.Printf("[request] selector=%q query=%q from=%s", selector, query, conn.RemoteAddr())
+	log.Printf("request selector=%q query=%q from=%s", selector, query, conn.RemoteAddr())
 
 	start := time.Now()
 
@@ -389,7 +389,7 @@ func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) error {
 
 	reply, err := callGroq(s.apiKey, sess.History)
 	if err != nil {
-		log.Printf("[groq error] %v", err)
+		log.Printf("groq error %v", err)
 		// Roll back the user message so history stays consistent.
 		sess.History = sess.History[:len(sess.History)-1]
 		gopherInfo(conn, "Error: "+err.Error())
@@ -409,8 +409,9 @@ func (s *Server) serveChat(conn net.Conn, sessID, userMsg string) error {
 	gopherInfo(conn, fmt.Sprintf("Turns so far: %d", (len(sess.History)-1)/2))
 	gopherInfo(conn, "")
 
-	gopherSearch(conn, "[ Reply ]", "/chat", s.host, s.port)
-	gopherSearch(conn, "[ Start a new conversation ]", "/new", s.host, s.port)
+	gopherSearch(conn, "Reply", "/chat", s.host, s.port)
+	gopherSearch(conn, "Start a new conversation", "/new", s.host, s.port)
+	fmt.Fprintf(conn, "1View history\t/history\t%s\t%s\r\n", s.host, s.port)
 	gopherEnd(conn)
 	return nil
 }
@@ -419,14 +420,15 @@ func (s *Server) serveNew(conn net.Conn, sessID string) {
 	s.store.Delete(sessID)
 	gopherInfo(conn, "Session cleared. Starting fresh!")
 	gopherInfo(conn, "")
-	gopherSearch(conn, "[ Start chatting ]", "/chat", s.host, s.port)
+	gopherSearch(conn, "Start chatting", "/chat", s.host, s.port)
 	gopherEnd(conn)
 }
 
 func (s *Server) serveHistory(conn net.Conn, sessID string) {
 	sess := s.store.GetOrCreate(sessID)
 
-	gopherInfo(conn, "=== Conversation History ===")
+	gopherInfo(conn, " Conversation History")
+	gopherInfo(conn, "_______________________________")
 	gopherInfo(conn, "")
 
 	turns := 0
@@ -451,7 +453,7 @@ func (s *Server) serveHistory(conn net.Conn, sessID string) {
 		gopherInfo(conn, "")
 	}
 
-	gopherSearch(conn, "[ Back to chat ]", "/chat", s.host, s.port)
+	gopherSearch(conn, "Back to chat", "/chat", s.host, s.port)
 	gopherEnd(conn)
 }
 
@@ -497,7 +499,7 @@ func main() {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("[accept error] %v", err)
+			log.Printf("accept error %v", err)
 			continue
 		}
 		go srv.handle(conn)
