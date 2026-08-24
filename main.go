@@ -26,7 +26,8 @@ const (
 	// Groq — OpenAI-compatible, free tier, requires GROQ_API_KEY.
 	// Browse available models at: https://console.groq.com/docs/models
 	groqBaseURL = "https://api.groq.com/openai/v1/chat/completions"
-	groqModel   = "llama-3.3-70b-versatile"
+	// groqModel   = "llama-3.3-70b-versatile"
+	groqModel = "openai/gpt-oss-120b"
 
 	systemPrompt = "You are a helpful assistant. Keep responses concise and suitable for a plain-text terminal. Avoid markdown formatting."
 )
