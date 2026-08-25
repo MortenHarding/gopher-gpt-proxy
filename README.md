@@ -151,7 +151,7 @@ explicit token in the path:
 Edit the `groqModel` constant in `main.go`:
 
 ```go
-const groqModel = "llama-3.3-70b-versatile"
+const groqModel = "openai/gpt-oss-120b"
 ```
 
 Browse all available models at: https://console.groq.com/docs/models
